@@ -1,0 +1,19 @@
+* Preliminary non-ideal power transient model — DB-001 Rev.1.0
+* Open in LTspice. Replace all TBD values with selected part datasheets/tests.
+.param RBAT=8 RESR=0.12 CBUF=1.5 RLEAK=33000
+Vcell ncell 0 3.6
+Rbat ncell nreg {RBAT}
+* Approximate regulator/headroom path; replace with vendor macro-model when available
+Rreg nreg n33 0.25
+Cout n33 0 22u Rser=0.03
+Rcap n33 ncap {RESR}
+Cbuf ncap 0 {CBUF}
+Rleak ncap 0 {RLEAK}
+* Load profile: sleep, boot/acquisition, join, TX burst, ACK, sleep
+Iload n33 0 PWL(0 0.0001 0.01 0.0001 0.02 0.085 2.02 0.085 2.03 0.12 10.03 0.12 10.04 0.24 12.04 0.24 12.05 0.18 13.05 0.18 13.06 0.0001 20 0.0001)
+.tran 0 20 0 50u
+.step param RBAT list 2 8 20
+.step param CBUF list 1 1.5 2
+.meas tran VMIN min V(n33) from 0 to 15
+.meas tran IBATMAX max I(Vcell) from 0 to 15
+.end

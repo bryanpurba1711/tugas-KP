@@ -1,0 +1,11 @@
+LTspice 24.0.9 for Windows
+Circuit: * C:\Users\bryan\Downloads\KP\monitoring vibrasi dan temperature pada motor\penting\LTspice\Simulasi transien daya tugas KP.asc
+Start Time: Thu Jul 16 15:51:08 2026
+solver = Normal
+Maximum thread count: 16
+tnom = 27
+temp = 27
+method = trap
+Direct Newton iteration for .op point succeeded.
+Total elapsed time: 0.044 seconds.
+

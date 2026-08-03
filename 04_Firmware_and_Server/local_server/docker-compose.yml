@@ -1,0 +1,98 @@
+version: "3.8"
+
+# =====================================================================
+# Local server stack (dijalankan di Raspberry Pi):
+#   mosquitto  -> MQTT broker, menerima publish dari gateway ESP32
+#   influxdb   -> database time-series untuk data getaran
+#   subscriber -> service Python: MQTT subscriber -> tulis ke InfluxDB
+#   grafana    -> dashboard visualisasi
+#
+# Semua service ada di jaringan internal Docker "kp_net" kecuali port
+# yang sengaja di-expose ke LAN (1883 MQTT, 8086 InfluxDB, 3000 Grafana).
+# =====================================================================
+
+networks:
+  kp_net:
+    driver: bridge
+
+volumes:
+  mosquitto_data:
+  mosquitto_log:
+  influxdb_data:
+  grafana_data:
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: kp_mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"   # MQTT — gateway ESP32 publish ke sini via LAN
+      - "9001:9001"   # MQTT over WebSocket (opsional, untuk debug/dashboard web)
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    networks:
+      - kp_net
+
+  influxdb:
+    image: influxdb:2.7
+    container_name: kp_influxdb
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_INIT_USERNAME}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_INIT_PASSWORD}
+      - DOCKER_INFLUXDB_INIT_ORG=${INFLUXDB_INIT_ORG}
+      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB_INIT_BUCKET}
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_INIT_ADMIN_TOKEN}
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+    networks:
+      - kp_net
+
+  subscriber:
+    build: ./subscriber
+    container_name: kp_mqtt_subscriber
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+      - influxdb
+    environment:
+      - MQTT_HOST=mosquitto
+      - MQTT_PORT=1883
+      - MQTT_USERNAME=${MQTT_USERNAME}
+      - MQTT_PASSWORD=${MQTT_PASSWORD}
+      - MQTT_TOPIC=kp/edge/+/features
+      - MQTT_STATUS_TOPIC=kp/gateway/status
+      - INFLUX_URL=http://influxdb:8086
+      - INFLUX_TOKEN=${INFLUXDB_INIT_ADMIN_TOKEN}
+      - INFLUX_ORG=${INFLUXDB_INIT_ORG}
+      - INFLUX_BUCKET=${INFLUXDB_INIT_BUCKET}
+    networks:
+      - kp_net
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: kp_grafana
+    restart: unless-stopped
+    depends_on:
+      - influxdb
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
+      - INFLUX_URL=http://influxdb:8086
+      - INFLUX_TOKEN=${INFLUXDB_INIT_ADMIN_TOKEN}
+      - INFLUX_ORG=${INFLUXDB_INIT_ORG}
+      - INFLUX_BUCKET=${INFLUXDB_INIT_BUCKET}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    networks:
+      - kp_net
